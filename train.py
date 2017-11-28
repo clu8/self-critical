@@ -87,7 +87,7 @@ def train(opt):
 
     while True:
         if update_lr_flag:
-                # Assign the learning rate
+            # Assign the learning rate
             if epoch > opt.learning_rate_decay_start and opt.learning_rate_decay_start >= 0:
                 frac = (epoch - opt.learning_rate_decay_start) // opt.learning_rate_decay_every
                 decay_factor = opt.learning_rate_decay_rate  ** frac
@@ -122,7 +122,7 @@ def train(opt):
         tmp = [Variable(torch.from_numpy(_), requires_grad=False).cuda() for _ in tmp]
         fc_feats, att_feats, labels, masks = tmp
 
-        if opt.ppo: # PPO self-critical update
+        if opt.ppo and sc_flag: # PPO self-critical update
             gen_result, old_logprobs = model.sample(fc_feats, att_feats, {'sample_max': 0})
             old_logprobs = old_logprobs.detach()
             old_logprobs[:, 1:] = old_logprobs[:, 1:] * Variable((gen_result[:, :-1] > 0).float(), requires_grad=False)
@@ -159,7 +159,8 @@ def train(opt):
 
         end = time.time()
 
-        mean_reward = np.mean(reward)
+        if sc_flag:
+            mean_reward = np.mean(reward)
         if not sc_flag:
             print("iter {} (epoch {}), train_loss = {:.3f}, time/batch = {:.3f}" \
                 .format(iteration, epoch, train_loss, end - start))
