@@ -41,15 +41,28 @@ class RewardCriterion(nn.Module):
     def __init__(self):
         super(RewardCriterion, self).__init__()
 
-    def forward(self, input, seq, reward):
-        input = to_contiguous(input).view(-1)
+    def forward(self, sample_logprobs, seq, reward):
+        sample_logprobs = to_contiguous(sample_logprobs).view(-1)
         reward = to_contiguous(reward).view(-1)
-        mask = (seq>0).float()
+        mask = (seq > 0).float()
         mask = to_contiguous(torch.cat([mask.new(mask.size(0), 1).fill_(1), mask[:, :-1]], 1)).view(-1)
-        output = - input * reward * Variable(mask)
+        output = -sample_logprobs * reward * Variable(mask)
         output = torch.sum(output) / torch.sum(mask)
 
         return output
+
+class PPOCriterion(nn.Module):
+    def __init__(self, clip_param):
+        super(PPOCriterion, self).__init__()
+        self.clip_param = clip_param # epsilon
+
+    def forward(self, old_logprobs_agg, new_logprobs_agg, seq, atarg):
+        ratio = torch.exp(new_logprobs_agg - old_logprobs_agg)
+        surr1 = ratio * atarg
+        surr2 = torch.clamp(ratio, 1 - self.clip_param, 1 + self.clip_param) * atarg
+        pol_surr = -torch.min(surr1, surr2).mean() # PPO's pessimistic surrogate (L^CLIP)
+        return pol_surr
+
 class LanguageModelCriterion(nn.Module):
     def __init__(self):
         super(LanguageModelCriterion, self).__init__()

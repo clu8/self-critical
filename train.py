@@ -31,6 +31,9 @@ def add_summary_value(writer, key, value, iteration):
     writer.add_summary(summary, iteration)
 
 def train(opt):
+    if opt.ppo and opt.drop_prob_lm > 0:
+        print('===== Highly recommend setting dropout prob to 0 during PPO training =====')
+
     opt.use_att = utils.if_use_att(opt.caption_model)
     loader = DataLoader(opt)
     opt.vocab_size = loader.vocab_size
@@ -74,7 +77,7 @@ def train(opt):
     model.train()
 
     crit = utils.LanguageModelCriterion()
-    rl_crit = utils.RewardCriterion()
+    rl_crit = utils.RewardCriterion() if not opt.ppo else utils.PPOCriterion(opt.ppo_clip_param)
 
     optimizer = optim.Adam(model.parameters(), lr=opt.learning_rate, weight_decay=opt.weight_decay)
 
@@ -118,27 +121,51 @@ def train(opt):
         tmp = [data['fc_feats'], data['att_feats'], data['labels'], data['masks']]
         tmp = [Variable(torch.from_numpy(_), requires_grad=False).cuda() for _ in tmp]
         fc_feats, att_feats, labels, masks = tmp
-        
-        optimizer.zero_grad()
-        if not sc_flag:
-            loss = crit(model(fc_feats, att_feats, labels), labels[:,1:], masks[:,1:])
-        else:
-            gen_result, sample_logprobs = model.sample(fc_feats, att_feats, {'sample_max':0})
-            reward = get_self_critical_reward(model, fc_feats, att_feats, data, gen_result)
-            loss = rl_crit(sample_logprobs, gen_result, Variable(torch.from_numpy(reward).float().cuda(), requires_grad=False))
 
-        loss.backward()
-        utils.clip_gradient(optimizer, opt.grad_clip)
-        optimizer.step()
-        train_loss = loss.data[0]
-        torch.cuda.synchronize()
+        if opt.ppo: # PPO self-critical update
+            gen_result, old_logprobs = model.sample(fc_feats, att_feats, {'sample_max': 0})
+            old_logprobs = old_logprobs.detach()
+            old_logprobs[:, 1:] = old_logprobs[:, 1:] * Variable((gen_result[:, :-1] > 0).float(), requires_grad=False)
+            old_logprobs_agg = old_logprobs.sum(dim=1)
+
+            reward = get_self_critical_reward(model, fc_feats, att_feats, data, gen_result)
+            for ppo_iter in range(opt.ppo_iters):
+                new_logprobs = model.get_seq_logprobs(fc_feats, att_feats, gen_result)
+                new_logprobs_agg = new_logprobs.sum(dim=1)
+                loss = rl_crit(old_logprobs_agg, new_logprobs_agg, gen_result, Variable(torch.from_numpy(reward).float().cuda(), requires_grad=False))
+
+                optimizer.zero_grad()
+                if ppo_iter < opt.ppo_iters - 1:
+                    loss.backward(retain_graph=True)
+                else:
+                    loss.backward()
+                optimizer.step()
+                torch.cuda.synchronize()
+        else:
+            if not sc_flag:
+                loss = crit(model(fc_feats, att_feats, labels), labels[:,1:], masks[:,1:])
+            else:
+                gen_result, sample_logprobs = model.sample(fc_feats, att_feats, {'sample_max': 0})
+                scores = get_self_critical_reward(model, fc_feats, att_feats, data, gen_result)
+                reward = np.repeat(scores[:, np.newaxis], gen_result.shape[1], 1)
+                loss = rl_crit(sample_logprobs, gen_result, Variable(torch.from_numpy(reward).float().cuda(), requires_grad=False))
+
+            optimizer.zero_grad()
+            loss.backward()
+            utils.clip_gradient(optimizer, opt.grad_clip)
+            optimizer.step()
+            train_loss = loss.data[0]
+            torch.cuda.synchronize()
+
         end = time.time()
+
+        mean_reward = np.mean(reward)
         if not sc_flag:
             print("iter {} (epoch {}), train_loss = {:.3f}, time/batch = {:.3f}" \
                 .format(iteration, epoch, train_loss, end - start))
         else:
             print("iter {} (epoch {}), avg_reward = {:.3f}, time/batch = {:.3f}" \
-                .format(iteration, epoch, np.mean(reward[:,0]), end - start))
+                .format(iteration, epoch, mean_reward, end - start))
 
         # Update the iteration and epoch
         iteration += 1
@@ -149,14 +176,15 @@ def train(opt):
         # Write the training loss summary
         if (iteration % opt.losses_log_every == 0):
             if tf is not None:
-                add_summary_value(tf_summary_writer, 'train_loss', train_loss, iteration)
                 add_summary_value(tf_summary_writer, 'learning_rate', opt.current_lr, iteration)
                 add_summary_value(tf_summary_writer, 'scheduled_sampling_prob', model.ss_prob, iteration)
                 if sc_flag:
-                    add_summary_value(tf_summary_writer, 'avg_reward', np.mean(reward[:,0]), iteration)
+                    add_summary_value(tf_summary_writer, 'avg_reward', mean_reward, iteration)
+                else:
+                    add_summary_value(tf_summary_writer, 'train_loss', train_loss, iteration)
                 tf_summary_writer.flush()
 
-            loss_history[iteration] = train_loss if not sc_flag else np.mean(reward[:,0])
+            loss_history[iteration] = train_loss if not sc_flag else mean_reward
             lr_history[iteration] = opt.current_lr
             ss_prob_history[iteration] = model.ss_prob
 

@@ -23,7 +23,6 @@ class LSTMCore(nn.Module):
         self.dropout = nn.Dropout(self.drop_prob_lm)
 
     def forward(self, xt, state):
-        
         all_input_sums = self.i2h(xt) + self.h2h(state[0][-1])
         sigmoid_chunk = all_input_sums.narrow(1, 0, 3 * self.rnn_size)
         sigmoid_chunk = F.sigmoid(sigmoid_chunk)
@@ -46,6 +45,7 @@ class LSTMCore(nn.Module):
 class FCModel(CaptionModel):
     def __init__(self, opt):
         super(FCModel, self).__init__()
+        print(opt)
         self.vocab_size = opt.vocab_size
         self.input_encoding_size = opt.input_encoding_size
         self.rnn_type = opt.rnn_type
@@ -199,4 +199,30 @@ class FCModel(CaptionModel):
 
         return torch.cat([_.unsqueeze(1) for _ in seq], 1), torch.cat([_.unsqueeze(1) for _ in seqLogprobs], 1)
 
+    def get_seq_logprobs(self, fc_feats, att_feats, seq):
+        # seq[t] is the input of the t+2 time step
+        batch_size = fc_feats.size(0)
+        state = self.init_hidden(batch_size)
+        seq_logprobs = []
 
+        # t == 0
+        xt = self.img_embed(fc_feats)
+        output, state = self.core(xt, state)
+        
+        # t == 1
+        it = fc_feats.data.new(batch_size).long().zero_() # input <bos>
+        xt = self.embed(Variable(it, requires_grad=False))
+        output, state = self.core(xt, state)
+        logprobs = F.log_softmax(self.logit(output))
+        sample_logprobs = logprobs.gather(1, Variable(seq[:, 0:1], requires_grad=False))
+        seq_logprobs.append(sample_logprobs.view(-1))
+
+        for i in range(seq.size(1) - 1):
+            it = seq[:, i]
+            xt = self.embed(it)
+            output, state = self.core(xt, state)
+            logprobs = F.log_softmax(self.logit(output))
+            sample_logprobs = logprobs.gather(1, Variable(seq[:, i+1:i+2])) * Variable((seq[:, i:i+1] > 0).float(), requires_grad=False)
+            seq_logprobs.append(sample_logprobs.view(-1))
+
+        return torch.cat([_.unsqueeze(1) for _ in seq_logprobs], 1)

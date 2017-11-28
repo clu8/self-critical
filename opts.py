@@ -54,6 +54,12 @@ def parse_opt():
                     help='number of captions to sample for each image during training. Done for efficiency since CNN forward pass is expensive. E.g. coco has 5 sents/image')
     parser.add_argument('--beam_size', type=int, default=1,
                     help='used when sample_max = 1, indicates number of beams in beam search. Usually 2 or 3 works well. More is not better. Set this to 1 for faster runtime but a bit worse performance.')
+    parser.add_argument('--ppo', type=int, default=0,
+                    help='use PPO self-critical update instead of REINFORCE self-critical update (1 = yes, 0 = no)')
+    parser.add_argument('--ppo_iters', type=int, default=8,
+                    help='if using PPO update, number of PPO iterations (gradient updates) per data batch')
+    parser.add_argument('--ppo_clip_param', type=float, default=0.2,
+                    help='if using PPO update, clip param epsilon')
 
     #Optimization: for the Language Model
     parser.add_argument('--optim', type=str, default='adam',
