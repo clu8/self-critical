@@ -205,6 +205,41 @@ class AttModel(CaptionModel):
 
         return torch.cat([_.unsqueeze(1) for _ in seq], 1), torch.cat([_.unsqueeze(1) for _ in seqLogprobs], 1)
 
+    def get_seq_logprobs(self, fc_feats, att_feats, seq):
+        # seq[t] is the input of the t+1 time step (vs t+2 in FCModel)
+        batch_size = fc_feats.size(0)
+        state = self.init_hidden(batch_size)
+
+        # embed fc and att feats
+        fc_feats = self.fc_embed(fc_feats)
+        _att_feats = self.att_embed(att_feats.view(-1, self.att_feat_size))
+        att_feats = _att_feats.view(*(att_feats.size()[:-1] + (self.rnn_size,)))
+
+        # Project the attention feats first to reduce memory and computation comsumptions.
+        p_att_feats = self.ctx2att(att_feats.view(-1, self.rnn_size))
+        p_att_feats = p_att_feats.view(*(att_feats.size()[:-1] + (self.att_hid_size,)))
+
+        seq_logprobs = []
+
+        # t = 0
+        it = fc_feats.data.new(batch_size).long().zero_() # input <bos>
+        xt = self.embed(Variable(it, requires_grad=False))
+        output, state = self.core(xt, fc_feats, att_feats, p_att_feats, state)
+        logprobs = F.log_softmax(self.logit(output))
+        sample_logprobs = logprobs.gather(1, Variable(seq[:, 0:1], requires_grad=False))
+        seq_logprobs.append(sample_logprobs.view(-1))
+
+        for i in range(seq.size(1) - 1):
+            it = seq[:, i]
+            xt = self.embed(it)
+            output, state = self.core(xt, fc_feats, att_feats, p_att_feats, state)
+            logprobs = F.log_softmax(self.logit(output))
+            sample_logprobs = logprobs.gather(1, Variable(seq[:, i+1:i+2])) * Variable((seq[:, i:i+1] > 0).float(), requires_grad=False)
+            seq_logprobs.append(sample_logprobs.view(-1))
+
+        return torch.cat([_.unsqueeze(1) for _ in seq_logprobs], 1)
+
+
 class AdaAtt_lstm(nn.Module):
     def __init__(self, opt, use_maxout=True):
         super(AdaAtt_lstm, self).__init__()
