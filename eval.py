@@ -69,6 +69,8 @@ parser.add_argument('--coco_json', type=str, default='',
 # misc
 parser.add_argument('--id', type=str, default='', 
                 help='an id identifying this run/job. used only if language_eval = 1 for appending to intermediate files')
+parser.add_argument('--cuda_device', type=int, default=0,
+                help='CUDA device to use')
 
 opt = parser.parse_args()
 
@@ -97,29 +99,30 @@ for k in vars(infos['opt']).keys():
 
 vocab = infos['vocab'] # ix -> word mapping
 
-# Setup the model
-model = models.setup(opt)
-model.load_state_dict(torch.load(opt.model))
-model.cuda()
-model.eval()
-crit = utils.LanguageModelCriterion()
+with torch.cuda.device(opt.cuda_device):
+    # Setup the model
+    model = models.setup(opt)
+    model.load_state_dict(torch.load(opt.model))
+    model.cuda()
+    model.eval()
+    crit = utils.LanguageModelCriterion()
 
-# Create the Data Loader instance
-if len(opt.image_folder) == 0:
-  loader = DataLoader(opt)
-else:
-  loader = DataLoaderRaw({'folder_path': opt.image_folder, 
-                            'coco_json': opt.coco_json,
-                            'batch_size': opt.batch_size,
-                            'cnn_model': opt.cnn_model})
-# When eval using provided pretrained model, the vocab may be different from what you have in your cocotalk.json
-# So make sure to use the vocab in infos file.
-loader.ix_to_word = infos['vocab']
+    # Create the Data Loader instance
+    if len(opt.image_folder) == 0:
+    loader = DataLoader(opt)
+    else:
+    loader = DataLoaderRaw({'folder_path': opt.image_folder, 
+                                'coco_json': opt.coco_json,
+                                'batch_size': opt.batch_size,
+                                'cnn_model': opt.cnn_model})
+    # When eval using provided pretrained model, the vocab may be different from what you have in your cocotalk.json
+    # So make sure to use the vocab in infos file.
+    loader.ix_to_word = infos['vocab']
 
 
-# Set sample options
-loss, split_predictions, lang_stats = eval_utils.eval_split(model, crit, loader, 
-    vars(opt))
+    # Set sample options
+    loss, split_predictions, lang_stats = eval_utils.eval_split(model, crit, loader, 
+        vars(opt))
 
 print('loss: ', loss)
 if lang_stats:

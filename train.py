@@ -253,4 +253,5 @@ def train(opt):
             break
 
 opt = opts.parse_opt()
-train(opt)
+with torch.cuda.device(opt.cuda_device):
+    train(opt)
