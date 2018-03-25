@@ -125,3 +125,36 @@ The defualt split to evaluate is test. The default inference method is greedy de
 ## Acknowledgements
 
 Thanks the original [neuraltalk2](https://github.com/karpathy/neuraltalk2) and awesome PyTorch team.
+
+## SCST-PPO: Commands 
+```
+FC model CE pretrain
+python train.py --id fc --caption_model fc --input_json data/cocotalk.json --input_fc_dir data/cocotalk_fc --input_att_dir data/cocotalk_att --input_label_h5 data/cocotalk_label.h5 --batch_size 128 --learning_rate 5e-4 --learning_rate_decay_start 0 --scheduled_sampling_start 0 --checkpoint_path save/log_fc --save_checkpoint_every 1000 --val_images_use 5000 --max_epochs 25
+
+FC model RL finetune
+python train.py --id fc_rl --caption_model fc --input_json data/cocotalk.json --input_fc_dir data/cocotalk_fc --input_att_dir data/cocotalk_att --input_label_h5 data/cocotalk_label.h5 --batch_size 64 --learning_rate 5e-5 --start_from save/log_fc_rl --checkpoint_path save/log_fc_rl --save_checkpoint_every 2000 --language_eval 1 --val_images_use 5000 --self_critical_after 24 --language_eval 1
+
+FC model PPO4 finetune
+python train.py --id fc_ppo4 --caption_model fc --input_json data/cocotalk.json --input_fc_dir data/cocotalk_fc --input_att_dir data/cocotalk_att --input_label_h5 data/cocotalk_label.h5 --batch_size 64 --learning_rate 5e-5 --start_from save/log_fc_ppo4 --checkpoint_path save/log_fc_ppo4 --save_checkpoint_every 2000 --language_eval 1 --val_images_use 5000 --self_critical_after 24 --language_eval 1 --ppo 1 --ppo_iters 4 --drop_prob_lm 0
+
+FC model PPO8 finetune
+python train.py --id fc_ppo8 --caption_model fc --input_json data/cocotalk.json --input_fc_dir data/cocotalk_fc --input_att_dir data/cocotalk_att --input_label_h5 data/cocotalk_label.h5 --batch_size 64 --learning_rate 5e-5 --start_from save/log_fc_ppo8 --checkpoint_path save/log_fc_ppo8 --save_checkpoint_every 2000 --language_eval 1 --val_images_use 5000 --self_critical_after 24 --language_eval 1 --ppo 1 --ppo_iters 8 --drop_prob_lm 0
+
+Att2in2 model CE pretrain
+python train.py --id att2in2 --caption_model att2in2 --input_json data/cocotalk.json --input_fc_dir data/cocotalk_fc --input_att_dir data/cocotalk_att --input_label_h5 data/cocotalk_label.h5 --batch_size 64 --learning_rate 5e-4 --learning_rate_decay_start 0 --scheduled_sampling_start 0 --checkpoint_path save/log_att2in2 --save_checkpoint_every 2000 --val_images_use 5000 --max_epochs 20
+
+Att2in2 model RL finetune
+python train.py --id att2in2_rl --caption_model att2in2 --input_json data/cocotalk.json --input_fc_dir data/cocotalk_fc --input_att_dir data/cocotalk_att --input_label_h5 data/cocotalk_label.h5 --batch_size 64 --learning_rate 5e-5 --start_from save/log_att2in2_rl --checkpoint_path save/log_att2in2_rl --save_checkpoint_every 2000 --language_eval 1 --val_images_use 5000 --self_critical_after 19 --language_eval 1
+
+Att2in2 model PPO4 finetune
+python train.py --id att2in2_ppo4 --caption_model att2in2 --input_json data/cocotalk.json --input_fc_dir data/cocotalk_fc --input_att_dir data/cocotalk_att --input_label_h5 data/cocotalk_label.h5 --batch_size 64 --learning_rate 5e-5 --start_from save/log_att2in2_ppo4 --checkpoint_path save/log_att2in2_ppo4 --save_checkpoint_every 2000 --language_eval 1 --val_images_use 5000 --self_critical_after 19 --language_eval 1 --ppo 1 --ppo_iters 4 --drop_prob_lm 0
+
+Att2in2 model PPO8 finetune
+python train.py --id att2in2_ppo8 --caption_model att2in2 --input_json data/cocotalk.json --input_fc_dir data/cocotalk_fc --input_att_dir data/cocotalk_att --input_label_h5 data/cocotalk_label.h5 --batch_size 64 --learning_rate 5e-5 --start_from save/log_att2in2_ppo8 --checkpoint_path save/log_att2in2_ppo8 --save_checkpoint_every 2000 --language_eval 1 --val_images_use 5000 --self_critical_after 19 --language_eval 1 --ppo 1 --ppo_iters 8 --drop_prob_lm 0
+
+Eval
+python eval.py --model save/log_fc_ppo8/model-best.pth --infos_path save/log_fc_ppo8/infos_fc_ppo8-best.pkl --dump_images 0 --num_images 5000 --language_eval 1 --cuda_device 1
+
+Generate caption
+python eval.py --model save/log_fc_ppo8/model-best.pth --infos_path save/log_fc_ppo8/infos_fc_ppo8-best.pkl --image_folder images --num_images 3
+```
